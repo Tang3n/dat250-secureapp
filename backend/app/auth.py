@@ -1,6 +1,6 @@
 import hashlib
 import secrets
-from fastapi import Request
+from fastapi import HTTPException, Request
 from app.database import run_query
 
 
@@ -40,3 +40,33 @@ def get_user_from_session(request: Request):
 
 def clear_session(token: str):
     run_query("DELETE FROM sessions WHERE session_token = %s", (token,), commit=True)
+
+
+# ---------------------------------------------------------------------------
+# Authorization (server-side, deny by default)
+# ---------------------------------------------------------------------------
+# Protected routes declare their requirement as a FastAPI dependency, so the
+# check runs before the handler body and cannot be skipped. The role is always
+# read from the users row resolved via the session cookie, never from
+# client-controlled data such as form fields or custom headers.
+
+VALID_ROLES = ("student", "ta", "teacher", "admin")
+STAFF_ROLES = ("admin", "teacher", "ta")
+
+
+def require_user(request: Request):
+    user = get_user_from_session(request)
+    if not user:
+        # Converted into a redirect to /login by the handler in main.py.
+        raise HTTPException(status_code=401)
+    return user
+
+
+def require_role(*allowed_roles: str):
+    def dependency(request: Request):
+        user = require_user(request)
+        if user["role"] not in allowed_roles:
+            raise HTTPException(status_code=403)
+        return user
+
+    return dependency

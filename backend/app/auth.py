@@ -1,15 +1,44 @@
 import hashlib
+import hmac
 import secrets
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError
 from fastapi import HTTPException, Request
 from app.database import run_query
 
+# ---------------------------------------------------------------------------
+# Password storage
+# ---------------------------------------------------------------------------
+# Passwords are hashed with Argon2id (memory-hard KDF, OWASP's first choice).
+# argon2-cffi generates a random 16-byte salt per hash and stores the salt and
+# the cost parameters inside the encoded hash ("$argon2id$v=19$m=...,t=...,p=...$salt$hash"),
+# so no separate salt column is needed and parameters can be raised later.
+_hasher = PasswordHasher()
+
 
 def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+    return _hasher.hash(password)
+
+
+def _is_legacy_sha256(password_hash: str) -> bool:
+    # Hashes created by the original implementation: unsalted SHA-256 hex.
+    return not password_hash.startswith("$argon2")
 
 
 def verify_password(password: str, password_hash: str) -> bool:
-    return hash_password(password) == password_hash
+    if _is_legacy_sha256(password_hash):
+        legacy = hashlib.sha256(password.encode()).hexdigest()
+        return hmac.compare_digest(legacy, password_hash)
+    try:
+        return _hasher.verify(password_hash, password)
+    except (VerificationError, InvalidHashError):
+        return False
+
+
+def password_needs_rehash(password_hash: str) -> bool:
+    # True for legacy SHA-256 hashes and for Argon2 hashes created with
+    # weaker parameters than the current ones. Used to upgrade on login.
+    return _is_legacy_sha256(password_hash) or _hasher.check_needs_rehash(password_hash)
 
 
 def create_session(user_id: int) -> str:

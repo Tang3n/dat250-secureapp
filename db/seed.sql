@@ -69,3 +69,11 @@ INSERT INTO audit_logs (actor_user_id, action, details) VALUES
 (1, 'seed', 'Initial seed data imported'),
 (2, 'grade_publish', 'Published grades for assignment 1'),
 (3, 'message_send', 'Sent onboarding messages');
+
+-- Tables above are seeded with explicit primary keys, which does not advance
+-- their SERIAL identity sequences. Without this, the first runtime INSERT
+-- (e.g. a user registration) reuses id=1 and fails with a unique-violation.
+-- Realign each sequence to the current maximum id.
+SELECT setval(pg_get_serial_sequence('users', 'id'), (SELECT MAX(id) FROM users));
+SELECT setval(pg_get_serial_sequence('courses', 'id'), (SELECT MAX(id) FROM courses));
+SELECT setval(pg_get_serial_sequence('assignments', 'id'), (SELECT MAX(id) FROM assignments));

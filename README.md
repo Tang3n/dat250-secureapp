@@ -42,6 +42,46 @@ If phpPgAdmin is enabled, use:
 - Username: `dat250`
 - Password: `dat250`
 
+## Security fixes (DAT250 Assignment 2)
+
+This fork remediates the vulnerabilities reported in Assignment 1:
+
+| ID | Vulnerability | Category | Main changes |
+|---|---|---|---|
+| F1 | Privilege escalation via mass assignment on `POST /profile/update` | Broken Access Control | `routes/profile_routes.py`, `templates/profile.html` |
+| F2 | Missing server-side role checks on admin endpoints | Broken Access Control | `auth.py` (`require_role`), `routes/admin_routes.py` |
+| F3 | IDOR on `GET /grades/{id}` and `GET /messages/{id}` | Broken Access Control | `routes/grade_routes.py`, `routes/message_routes.py` |
+| F4 | SQL injection in `GET /admin/search-users` | Injection | `routes/admin_routes.py` |
+| F5 | Unsalted SHA-256 password storage | Cryptographic Storage | `auth.py` (Argon2id), `db/seed.sql` |
+| F6 | Weak session cookie, account enumeration, predictable/replayable reset tokens | Broken Authentication | `auth.py`, `routes/auth_routes.py`, `config.py` |
+
+New settings (in `.env.example`, which docker-compose loads): `SESSION_MAX_AGE_SECONDS`, `RESET_TOKEN_TTL_SECONDS`,
+`COOKIE_SECURE` (set to `true` when the app is served over HTTPS).
+
+### Running the security regression tests
+
+The tests in `tests/` talk to a running instance over HTTP, exactly like the
+original exploits did, and read the database and MailHog only to check state.
+Each finding has negative tests (the Assignment 1 exploit must fail) and
+positive tests (legitimate use still works).
+
+```bash
+# 1. Start a fresh instance (the tests expect the seeded data)
+docker compose down -v
+docker compose up --build -d
+
+# 2. Install the test dependencies (Python 3.10+)
+python3 -m venv .venv
+.venv/bin/pip install -r tests/requirements.txt
+
+# 3. Run the tests
+.venv/bin/pytest tests -v
+```
+
+Defaults target `http://localhost:18181`, MailHog on `http://localhost:8025` and
+PostgreSQL on `localhost:5432`; override them with `BASE_URL`, `MAILHOG_URL`
+and `TEST_DATABASE_URL` if needed.
+
 ## 5. Test users
 Use these accounts in the local lab environment:
 

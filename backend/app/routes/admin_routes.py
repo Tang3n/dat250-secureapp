@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request, Form, Depends, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
-from app.database import run_query, get_conn
+from app.database import run_query
 from app.auth import require_role, STAFF_ROLES, VALID_ROLES
 
 router = APIRouter()
@@ -83,15 +83,14 @@ def update_grade(
 
 @router.get("/admin/search-users", response_class=HTMLResponse)
 def search_users(request: Request, q: str = "", user=Depends(require_admin)):
-    sql = f"SELECT id, email, full_name, role FROM users WHERE email ILIKE '%{q}%' OR full_name ILIKE '%{q}%'"
-    conn = get_conn()
-    try:
-        with conn.cursor() as cur:
-            cur.execute(sql)
-            rows = cur.fetchall()
-            cols = [d[0] for d in cur.description]
-            users = [dict(zip(cols, r)) for r in rows]
-    finally:
-        conn.close()
-
+    # Parameterized query: the search term is bound as a value, never spliced
+    # into the SQL text, so a crafted q (e.g. a UNION on the users table)
+    # cannot alter the statement. '%'/'_' in q act only as LIKE wildcards.
+    pattern = f"%{q}%"
+    users = run_query(
+        "SELECT id, email, full_name, role FROM users "
+        "WHERE email ILIKE %s OR full_name ILIKE %s ORDER BY id",
+        (pattern, pattern),
+        fetchall=True,
+    )
     return templates.TemplateResponse("admin_users.html", {"request": request, "user": user, "users": users, "q": q})

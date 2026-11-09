@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Form
+from fastapi import APIRouter, Request, Form, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from app.database import run_query
@@ -62,4 +62,9 @@ def message_detail(request: Request, message_id: int):
         (message_id,),
         fetchone=True,
     )
+    # Object-level authorization: only the sender or the recipient may read a
+    # message. A missing id or someone else's message both return 404, so ids
+    # cannot be probed for existence.
+    if not message or user["id"] not in (message["sender_id"], message["recipient_id"]):
+        raise HTTPException(status_code=404)
     return templates.TemplateResponse("message_detail.html", {"request": request, "user": user, "message": message})
